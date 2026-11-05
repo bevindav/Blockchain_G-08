@@ -1,0 +1,6 @@
+node_modules/
+smart-contract/artifacts/
+smart-contract/cache/
+smart-contract/deployments/
+smart-contract/network/generated/
+.env
