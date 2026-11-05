@@ -1,0 +1,22 @@
+{
+  "name": "donation-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "deploy": "hardhat run scripts/deploy.js",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:besu": "hardhat run scripts/deploy.js --network besu"
+  },
+  "devDependencies": {
+    "hardhat": "2.28.0",
+    "@nomicfoundation/hardhat-ethers": "3.1.2",
+    "@nomicfoundation/hardhat-chai-matchers": "2.1.2",
+    "ethers": "6.15.0",
+    "chai": "4.5.0",
+    "solc": "0.8.24"
+  },
+  "dependencies": { "@openzeppelin/contracts": "5.0.2" }
+}
