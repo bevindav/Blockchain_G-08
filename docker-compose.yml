@@ -1,0 +1,146 @@
+# Deployment otomatis seluruh dApp: private chain Besu QBFT (4 validator) -> deploy kontrak -> IPFS,
+# PostgreSQL, Redis -> oracle/backend -> frontend.
+#   docker compose up -d --build
+# Reset chain & data:  docker compose down -v
+
+x-besu: &besu
+  image: hyperledger/besu:24.12.0
+  entrypoint: ["/bin/bash", "/network/scripts/start-node.sh"]
+  user: root
+  environment:
+    JAVA_OPTS: "-Xms128m -Xmx${BESU_HEAP:-512m}"
+  volumes:
+    - ./smart-contract/network:/network:ro
+    - besu-config:/config:ro
+  depends_on:
+    besu-init: { condition: service_completed_successfully }
+  restart: unless-stopped
+
+services:
+  besu-init:
+    image: hyperledger/besu:24.12.0
+    entrypoint: ["/bin/bash", "/network/scripts/init.sh"]
+    user: root
+    volumes:
+      - ./smart-contract/network:/network:ro
+      - besu-config:/config
+
+  validator1:
+    <<: *besu
+    command: ["1", "--rpc-http-enabled", "--rpc-http-host=0.0.0.0", "--rpc-http-port=8545",
+      "--rpc-http-cors-origins=*", "--rpc-http-api=ETH,NET,WEB3,QBFT,TXPOOL"]
+    volumes:
+      - ./smart-contract/network:/network:ro
+      - besu-config:/config:ro
+      - validator1-data:/data
+    ports: ["127.0.0.1:8545:8545"]
+
+  validator2:
+    <<: *besu
+    command: ["2", "--rpc-http-enabled", "--rpc-http-host=0.0.0.0", "--rpc-http-port=8545",
+      "--rpc-http-cors-origins=*", "--rpc-http-api=ETH,NET,WEB3,QBFT,TXPOOL"]
+    volumes:
+      - ./smart-contract/network:/network:ro
+      - besu-config:/config:ro
+      - validator2-data:/data
+    ports: ["127.0.0.1:8546:8545"]
+    depends_on: [validator1]
+
+  validator3:
+    <<: *besu
+    command: ["3"]
+    volumes:
+      - ./smart-contract/network:/network:ro
+      - besu-config:/config:ro
+      - validator3-data:/data
+    depends_on: [validator1]
+
+  validator4:
+    <<: *besu
+    command: ["4"]
+    volumes:
+      - ./smart-contract/network:/network:ro
+      - besu-config:/config:ro
+      - validator4-data:/data
+    depends_on: [validator1]
+
+  ipfs:
+    image: ipfs/kubo:v0.32.1
+    environment:
+      IPFS_PROFILE: server
+    volumes: [ipfs-data:/data/ipfs]
+    ports: ["127.0.0.1:8080:8080"]   # gateway publik read-only; API 5001 hanya di jaringan internal
+    restart: unless-stopped
+
+  deployer:
+    build: ./smart-contract
+    environment:
+      BESU_RPC_URL: http://validator1:8545
+      IPFS_API_URL: http://ipfs:5001
+      DEPLOYMENTS_DIR: /deployments
+      SEED_DEMO: ${SEED_DEMO:-true}
+    volumes: [deployments:/deployments]
+    depends_on: [validator1, validator2, validator3, validator4, ipfs]
+    restart: "no"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: donasi
+      POSTGRES_PASSWORD: donasi
+      POSTGRES_DB: donasi
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U donasi"]
+      interval: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 20
+    restart: unless-stopped
+
+  oracle:
+    build: ./oracle
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: 4000
+      RPC_URLS: http://validator1:8545,http://validator2:8545
+      DATABASE_URL: postgres://donasi:donasi@postgres:5432/donasi
+      REDIS_URL: redis://redis:6379
+      IPFS_API_URL: http://ipfs:5001
+      DEPLOYMENTS_FILE: /deployments/besu.json
+    volumes: [deployments:/deployments:ro]
+    ports: ["127.0.0.1:4000:4000"]
+    depends_on:
+      deployer: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: http://oracle:4000
+    environment:
+      BACKEND_URL: http://oracle:4000
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [oracle]
+    restart: unless-stopped
+
+volumes:
+  besu-config:
+  validator1-data:
+  validator2-data:
+  validator3-data:
+  validator4-data:
+  ipfs-data:
+  deployments:
+  postgres-data:

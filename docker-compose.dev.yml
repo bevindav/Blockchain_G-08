@@ -1,0 +1,9 @@
+# Override untuk pengembangan oracle/frontend di host (tanpa container oracle & frontend):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d validator1 validator2 validator3 validator4 ipfs deployer postgres redis
+services:
+  postgres:
+    ports: ["127.0.0.1:5432:5432"]
+  redis:
+    ports: ["127.0.0.1:6379:6379"]
+  ipfs:
+    ports: ["127.0.0.1:8080:8080", "127.0.0.1:5001:5001"]

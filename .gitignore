@@ -1,6 +1,21 @@
 node_modules/
+.env
+.env.local
+
+# smart-contract
 smart-contract/artifacts/
 smart-contract/cache/
 smart-contract/deployments/
+smart-contract/coverage/
+smart-contract/coverage.json
+smart-contract/crytic-export/
 smart-contract/network/generated/
-.env
+
+# oracle
+oracle/dist/
+
+# frontend
+frontend/.next/
+frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
