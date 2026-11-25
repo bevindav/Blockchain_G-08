@@ -1,90 +1,157 @@
-# Blockchain G-08
+# DonasiTransparan — Platform Donasi dengan Transparansi Dana melalui Smart Contract
 
-## Tech Stack
-- Node.js 22 LTS dan npm (validasi pada Node 22.6.0).
-- Solidity 0.8.24, Hardhat 2.28.0, ethers 6, OpenZeppelin 5.0.2, Mocha/Chai.
-- Docker Desktop dengan Linux engine + Compose dan PowerShell untuk private network Besu 24.12.0 QBFT. Docker tidak diperlukan untuk compile/test/Hardhat lokal.
-- Akses npm registry saat instalasi pertama. solc-js dipin di package-lock
+Tugas Besar IF4035 Blockchain — Kelompok G-08
 
-## Struktur
+| Nama | NIM |
+| --- | --- |
+| Indah Novita | 13523047 |
+| Andrew Isra Saputra DB | 13523110 |
+| Bevinda Vivian | 13523120 |
+
+## Deskripsi aplikasi
+
+DonasiTransparan adalah dApp donasi yang membuat setiap rupiah dapat ditelusuri **end-to-end**: donasi → escrow → pengajuan pencairan per milestone (dengan bukti) → persetujuan multi-pihak → pengiriman ke wallet penerima terdaftar → laporan penyaluran → penukaran ke rekening bank penerima. Seluruh jejak tercatat di private blockchain yang dijalankan bersama oleh beberapa validator (platform, NGO, auditor), sehingga tidak ada satu pihak pun yang dapat mengubah data secara sepihak.
+
+Fitur utama:
+
+- **Donasi rupiah tanpa wallet** (QRIS/VA via Midtrans Sandbox) yang dicatat on-chain oleh **payment oracle**. Oracle memverifikasi signature SHA512, mengecek ulang ke Status API, mencocokkan nominal, dan mencegah pencatatan ganda.
+- **Donasi dIDR via MetaMask** (token ERC-20, 1 dIDR = Rp1). dIDR diperoleh lewat top-up rupiah (on-ramp).
+- **Escrow per campaign** dengan **milestone**, **persetujuan N-of-M** (default 2 dari 3 approver), auto-reject bila kuorum mustahil tercapai, dan pembatalan pengajuan.
+- **Bukti penggunaan dana di IPFS**. Hash keccak256 file dicatat on-chain, bukti duplikat ditolak di semua campaign, dan siapa pun dapat memverifikasi hash dari UI.
+- **Kuitansi NFT soulbound** (ERC-721 + ERC-5192). Metadata dan gambarnya dibangkitkan sepenuhnya on-chain dan dapat diverifikasi dengan nomor kuitansi atau Order ID.
+- **Registri wallet penerima** oleh verifikator. Pencairan hanya bisa dikirim ke recipient terdaftar.
+- **Refund proporsional** bila campaign dibatalkan.
+- **Off-ramp**: penerima menukar dIDR ke rekening bank. Token dibakar, oracle mentransfer dana (simulasi), lalu mengonfirmasi on-chain. Data rekening tidak pernah ditulis on-chain.
+- **Circuit breaker** (pause token), batas nominal fiat per transaksi, dan fallback RPC antar validator.
+- Frontend menampilkan **status transaksi** (menunggu tanda tangan → pending → sukses/gagal beserta alasan), **timeline dana** dari event log, dashboard per role, dan **explorer** blok/transaksi/event.
+
+Dokumentasi lain:
+
+- [docs/user-guide.md](docs/user-guide.md) — instalasi, deployment, dan use case setiap role
+- [docs/api.md](docs/api.md) — endpoint oracle/backend dan struktur JSON
+- [docs/architecture.md](docs/architecture.md) — arsitektur, alur, dan desain smart contract
+- [docs/security.md](docs/security.md) — pemetaan OWASP Smart Contract Top 10, mitigasi oracle manipulation, Slither, dan optimasi gas
+
+## Struktur repository
 
 ```text
-frontend/                  
-oracle/                    
-smart-contract/
-  contracts/               
-  scripts/deploy.js        
-  test/donation.js         
-  hardhat.config.js
-  network/                 
-docs/                      
+frontend/        Next.js 16 + TypeScript + Tailwind CSS + ethers v6 (MetaMask)
+smart-contract/  Solidity 0.8.24 + Hardhat + OpenZeppelin 5
+  contracts/     DonationToken, CampaignFactory, Campaign, DonationReceipt
+  test/          21 unit test (100% line coverage)
+  scripts/       deploy.js, seed.js, docker-deploy.js, export-abi.js
+  network/       genesis QBFT + skrip node Besu
+oracle/          Node.js + TypeScript (Express, PostgreSQL, BullMQ/Redis, Midtrans, IPFS)
+docs/            dokumentasi, laporan gas, laporan Slither, diagram arsitektur
+docker-compose.yml  deployment otomatis seluruh sistem
 ```
 
-## Compile, test, deploy on local Hardhat
+## System requirement
 
-```powershell
+| Komponen | Kebutuhan |
+| --- | --- |
+| OS | Linux, macOS, atau Windows 10/11 (Docker Desktop + WSL2) |
+| Docker | Docker Engine 24+ / Docker Desktop dengan Docker Compose v2 |
+| RAM | minimal 6 GB bebas (4 node Besu ±0,5 GB/node, ditambah Postgres, Redis, IPFS, oracle, dan frontend) |
+| Disk | ±4 GB untuk image |
+| Browser | Chrome/Firefox/Brave dengan ekstensi **MetaMask** |
+| Untuk pengembangan tanpa Docker | Node.js 22 LTS dan npm 10 |
+| Opsional | Akun Midtrans Sandbox (pembayaran nyata sandbox) dan ngrok (webhook) |
+
+Port lokal yang dipakai: `8545`/`8546` (RPC validator 1/2), `8080` (gateway IPFS), `4000` (oracle API), dan `3000` (frontend).
+
+## Cara cepat (semua otomatis)
+
+```bash
+git clone https://github.com/bevindav/Blockchain_G-08.git
+cd Blockchain_G-08
+cp .env.example .env          # opsional: isi key Midtrans Sandbox
+docker compose up -d --build  # ±3-5 menit pada build pertama
+```
+
+Buka **http://localhost:3000**. Perintah di atas menjalankan berurutan: pembuatan genesis dan key validator, 4 validator Besu, deploy kontrak, seed data demo, IPFS, PostgreSQL, Redis, oracle, dan frontend.
+
+```bash
+docker compose ps                     # status seluruh layanan
+docker compose logs -f oracle         # log oracle (verifikasi pembayaran, tx on-chain)
+docker compose down                   # berhenti (data tetap tersimpan)
+docker compose down -v                # reset total: chain, database, IPFS
+```
+
+## Langkah menjalankan private chain
+
+Private chain memakai **Hyperledger Besu 24.12** dengan konsensus **QBFT** (Proof-of-Authority BFT), 4 validator, chainId **1337**, block time 2 detik, dan gas price 0. Dengan 4 validator, jaringan tetap berjalan walaupun satu validator mati (toleransi f = 1).
+
+```bash
+docker compose up -d validator1 validator2 validator3 validator4
+```
+
+1. Service `besu-init` menjalankan `besu operator generate-blockchain-config` dengan [`smart-contract/network/qbft-config.json`](smart-contract/network/qbft-config.json) untuk membuat genesis dan 4 key validator ke volume `besu-config`. Langkah ini hanya berjalan sekali.
+2. Setiap validator dijalankan oleh [`smart-contract/network/scripts/start-node.sh`](smart-contract/network/scripts/start-node.sh) dan terhubung ke validator1 sebagai bootnode.
+3. RPC JSON tersedia di `http://127.0.0.1:8545` (validator1) dan `http://127.0.0.1:8546` (validator2, fallback).
+
+Verifikasi jaringan:
+
+```bash
+curl -s -X POST localhost:8545 -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"qbft_getValidatorsByBlockNumber","params":["latest"],"id":1}'
+curl -s -X POST localhost:8545 -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+```
+
+Genesis mendanai 10 akun development Hardhat (mnemonic publik `test test ... junk`) **hanya untuk chain lokal**. Daftar akun dan role tersedia di [docs/user-guide.md](docs/user-guide.md#akun-demo).
+
+## Deployment smart contract pada private chain
+
+Dengan Docker (otomatis): service `deployer` menunggu RPC siap, lalu men-deploy kontrak bila belum ada di chain dan menjalankan seed demo. Alamat kontrak disimpan di volume `deployments` dan disajikan oleh `GET http://localhost:4000/api/config`.
+
+Manual dari host:
+
+```bash
 cd smart-contract
 npm ci
 npm run compile
-npm test
-npm run node -- --hostname 127.0.0.1
+npm test                 # 21 unit test
+npm run test:gas         # laporan gas (hardhat-gas-reporter)
+npm run coverage         # solidity-coverage
+npm run deploy:besu      # deploy ke Besu (http://127.0.0.1:8545) -> deployments/besu.json
+npm run seed:besu        # opsional: data demo
 ```
 
-Di terminal kedua, dari `smart-contract`:
+Untuk mengganti alamat role, set environment `DEPLOYER_PRIVATE_KEY`, `NGO_ADDRESS`, `VERIFIER_ADDRESS`, `ORACLE_ADDRESS`, `APPROVER_ADDRESSES` (dipisah koma), `APPROVAL_THRESHOLD`, dan `FIAT_CAP` sebelum `npm run deploy:besu`. Tanpa Besu, kontrak juga bisa dicoba di Hardhat node: `npm run node`, lalu `npm run deploy:local` dan `npm run seed:local` di terminal lain.
 
-```powershell
-npm run deploy:local
+Setelah mengubah kontrak, jalankan `npm run export-abi` untuk menyalin ABI ke `frontend/src/lib/abi` dan `oracle/src/abi`.
+
+## Deployment dan integrasi oracle
+
+Oracle (`oracle/`) adalah layanan Node.js + TypeScript dengan komponen berikut:
+
+- **Payment oracle**: `POST /api/payments/webhook` menerima notifikasi Midtrans → verifikasi signature → cek ulang Status API → cocokkan nominal → antrean BullMQ → `recordFiatDonation()` / `topUp()` on-chain. Retry memakai exponential backoff 5×, ditambah failover RPC ke validator lain.
+- **Reconciler**: setiap 20 detik menanyakan Status API untuk order yang belum terbayar (fallback bila webhook tidak sampai) dan memasukkan ulang job yang hilang.
+- **Event listener**: membaca `RedemptionRequested` → simulasi transfer bank → `confirmRedemption()`, sekaligus menyinkronkan status order dari event `DonationRecorded`/`TopUpRecorded`.
+- **IPFS**: unggah bukti ke node Kubo lokal (atau Pinata bila `PINATA_JWT` diisi).
+
+Dengan Docker: `docker compose up -d --build oracle`. Konfigurasi dibaca dari `.env` (lihat [.env.example](.env.example)).
+
+**Mode pembayaran:**
+
+1. **`mock`** (default, tanpa akun apa pun): halaman simulator pembayaran mengirim notifikasi bertanda tangan SHA512 ke pipeline verifikasi yang sama dengan Midtrans.
+2. **`sandbox`**: isi `MIDTRANS_SERVER_KEY` dan `MIDTRANS_CLIENT_KEY` dari dashboard Midtrans Sandbox, lalu `docker compose up -d oracle`. Untuk webhook real-time, jalankan `ngrok http 4000` dan set *Payment Notification URL* ke `https://<id>.ngrok-free.app/api/payments/webhook`. Tanpa ngrok pun pembayaran tetap tercatat lewat reconciler (±20 detik). Panduan langkah demi langkah ada di [docs/user-guide.md](docs/user-guide.md#midtrans-sandbox).
+
+Menjalankan oracle di host tanpa container (untuk pengembangan). Infrastruktur tetap memakai Docker dengan port dibuka lewat `docker-compose.dev.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d validator1 validator2 validator3 validator4 ipfs deployer postgres redis
+docker compose cp deployer:/deployments/besu.json smart-contract/deployments/besu.json
+cd oracle && npm ci && npm test && npm run dev   # default config membaca smart-contract/deployments/besu.json
 ```
 
-Default RPC `http://127.0.0.1:8545`. Jika pakai port lain, jalankan node dengan `--port 18545` dan set `$env:LOCAL_RPC_URL = 'http://127.0.0.1:18545'` pada terminal deployment. `npm run deploy` memakai network Hardhat sementara yang hilang setelah proses selesai. Gunakan `deploy:local` untuk node yang sedang berjalan.
+Frontend tanpa Docker: `cd frontend && npm ci && BACKEND_URL=http://localhost:4000 npm run dev`.
 
-Script men-deploy token dan factory, lalu factory akan membuat receipt. Script juga memberikan token admin role ke factory dan NGO_ROLE ke akun NGO. Pada Hardhat, akun 0 = admin, 1 = NGO, 2 = verifier, 3 = oracle, 4–5 = approver (2-of-2). Alamat hasil disimpan di `smart-contract/deployments/<network>.json`. Campaign dibuat setelah deployment oleh NGO menggunakan `createCampaign(recipient, [budget1, budget2, ...])`; verifier kemudian memanggil `activate()`.
+## Video demonstrasi
 
-Satu unit token = Rp1. Donatur token menjalankan `approve(campaign, amount)` lalu `donate(amount)`. Untuk simulasi fiat, signer oracle memanggil `recordFiatDonation(ethers.id(orderId), donor, amount)`. Token dimint ke escrow dan NFT dimint ke donor. NGO mengajukan `requestWithdrawal(milestoneIndex, amount)`, approver memanggil `approveWithdrawal(requestId)`, lalu NGO `executeWithdrawal(requestId)`; dana dIDR selalu menuju recipient terdaftar.
+> Link video presentasi dan demo: **_(diisi setelah rekaman)_**
 
-## Private blockchain QBFT
-```powershell
-powershell -ExecutionPolicy Bypass -File smart-contract/network/setup.ps1
-docker compose -f smart-contract/network/generated/compose.yaml up -d
-docker compose -f smart-contract/network/generated/compose.yaml logs --tail 30
-```
+## Lisensi
 
-Setup menghasilkan genesis engan validator extraData, empat private key acak, data directory, dan compose.yaml. Script akan menolak write jika directory generated sudah ada. Untuk restart, cukup `docker compose ... up -d`; untuk menghentikan, `docker compose -f smart-contract/network/generated/compose.yaml down`.
-
-
-Periksa empat validator dan blok:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/json -Body '{"jsonrpc":"2.0","method":"qbft_getValidatorsByBlockNumber","params":["latest"],"id":1}'
-Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/json -Body '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":2}'
-```
-
-Untuk deploy Besu, dari `smart-contract`, set environment berikut. Alamat contoh adalah akun development Hardhat yang publik, gunakan hanya pada chain lokal. Key di bawah adalah key akun development pertama yang didanai genesis, bukan secret produksi.
-
-```powershell
-$env:DEPLOYER_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
-$env:NGO_ADDRESS = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8'
-$env:VERIFIER_ADDRESS = '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC'
-$env:ORACLE_ADDRESS = '0x90F79bf6EB2c4f870365E785982E1f101E93b906'
-$env:APPROVER_1_ADDRESS = '0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65'
-$env:APPROVER_2_ADDRESS = '0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc'
-npm run deploy:besu
-```
-
-Besu tidak membuka akun signer melalui RPC, ethers menandatangani transaksi dengan key lokal. `BESU_RPC_URL` opsional (default localhost:8545). Deployment hanya memerlukan key admin, interaksi role lain memerlukan key wallet masing-masing.
-
-## Progress
-Done:smart contract, role NGO/verifier/oracle/approver, aktivasi, donasi token dan fiat mock, registry order global anti-duplikasi, escrow, milestone/reservasi, multi-approval, pencairan satu kali, NFT soulbound, events, deployment, dan unit tests.
-
-To do: frontend, layanan oracle, Midtrans nyata, redeem/transfer bank, IPFS, PostgreSQL, Redis/BullMQ, explorer, monitoring, CI/CD, refund, pembatalan withdrawal,  audit keamanan.  
-
-# Desain smart contract
-
-Solidity 0.8.24 dan OpenZeppelin 5.0.2. Satu unit dIDR = Rp1 (decimals=0). dIDR adalah representasi akuntansi, belum memiliki redeem rupiah.
-
-| Kontrak | Properties | Methods utama | Events |
-| --- | --- | --- | --- |
-| DonationToken | MINTER_ROLE, balanceOf, totalSupply | mint, transfer, approve, transferFrom, grantRole, revokeRole | Transfer, Approval, RoleGranted, RoleRevoked |
-| CampaignFactory | NGO_ROLE, token, receipt, verifier, oracle, threshold, campaigns, isCampaign, usedOrders | createCampaign, campaignCount, consumeOrder | CampaignCreated |
-| Campaign | ngo, recipient, verifier, oracle, threshold, isApprover, state, milestones, withdrawals, approved, totalBudget, totalDonated, totalPaid, reserved | activate, donate, recordFiatDonation, requestWithdrawal, approveWithdrawal, executeWithdrawal | Activated, DonationRecorded, WithdrawalRequested, WithdrawalApproved, WithdrawalExecuted, Completed |
-| DonationReceipt | factory, campaigns, nextId, receipts | registerCampaign, mint, ownerOf | Transfer saat mint |
+[MIT](LICENSE)
