@@ -1,0 +1,86 @@
+Multiple frameworks detected: solc, Solc-json. Using solc (highest priority). Use --compile-force-framework to override.
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin contracts/DonationToken.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --allow-paths .,/home/andrew/Drive_D_Full/Kodingan/Semester_7/blockchain/Blockchain_G-08/smart-contract/contracts' running
+Multiple frameworks detected: solc, Solc-json. Using solc (highest priority). Use --compile-force-framework to override.
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin contracts/CampaignFactory.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --allow-paths .,/home/andrew/Drive_D_Full/Kodingan/Semester_7/blockchain/Blockchain_G-08/smart-contract/contracts' running
+Compilation warnings/errors on contracts/CampaignFactory.sol:
+Warning: Contract code size is 25487 bytes and exceeds 24576 bytes (a limit introduced in Spurious Dragon). This contract may not be deployable on Mainnet. Consider enabling the optimizer (with a low "runs" value!), turning off revert strings, or using libraries.
+  --> contracts/Campaign.sol:22:1:
+   |
+22 | contract Campaign is ReentrancyGuard {
+   | ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning: Contract initcode size is 53950 bytes and exceeds 49152 bytes (a limit introduced in Shanghai). This contract may not be deployable on Mainnet. Consider enabling the optimizer (with a low "runs" value!), turning off revert strings, or using libraries.
+  --> contracts/CampaignFactory.sol:13:1:
+   |
+13 | contract CampaignFactory is AccessControl {
+   | ^ (Relevant source part starts here and spans across multiple lines).
+
+
+Multiple frameworks detected: solc, Solc-json. Using solc (highest priority). Use --compile-force-framework to override.
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin contracts/Campaign.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --allow-paths .,/home/andrew/Drive_D_Full/Kodingan/Semester_7/blockchain/Blockchain_G-08/smart-contract/contracts' running
+Compilation warnings/errors on contracts/Campaign.sol:
+Warning: Contract code size is 25487 bytes and exceeds 24576 bytes (a limit introduced in Spurious Dragon). This contract may not be deployable on Mainnet. Consider enabling the optimizer (with a low "runs" value!), turning off revert strings, or using libraries.
+  --> contracts/Campaign.sol:22:1:
+   |
+22 | contract Campaign is ReentrancyGuard {
+   | ^ (Relevant source part starts here and spans across multiple lines).
+
+
+Multiple frameworks detected: solc, Solc-json. Using solc (highest priority). Use --compile-force-framework to override.
+'solc --version' running
+'solc @openzeppelin=node_modules/@openzeppelin contracts/DonationReceipt.sol --combined-json abi,ast,bin,bin-runtime,srcmap,srcmap-runtime,userdoc,devdoc,hashes --allow-paths .,/home/andrew/Drive_D_Full/Kodingan/Semester_7/blockchain/Blockchain_G-08/smart-contract/contracts' running
+INFO:Detectors:
+Detector: reentrancy-events
+Reentrancy in CampaignFactory.createCampaign(address,uint40,string,uint128[]) (contracts/CampaignFactory.sol#73-84):
+	External calls:
+	- receipt.registerCampaign(campaign) (contracts/CampaignFactory.sol#80)
+	- token.grantRole(token.MINTER_ROLE(),campaign) (contracts/CampaignFactory.sol#81)
+	- target = Campaign(campaign).initialize(msg.sender,recipient,deadline,metadataCID,budgets,approvers,threshold) (contracts/CampaignFactory.sol#82)
+	Event emitted after the call(s):
+	- CampaignCreated(campaign,msg.sender,recipient,target,deadline,metadataCID) (contracts/CampaignFactory.sol#83)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-4
+INFO:Detectors:
+Detector: timestamp
+Campaign.initialize(address,address,uint40,string,uint128[],address[],uint8) (contracts/Campaign.sol#104-128) uses timestamp for comparisons
+	Dangerous comparisons:
+	- deadline_ <= block.timestamp (contracts/Campaign.sol#109)
+Campaign.activate() (contracts/Campaign.sol#139-143) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp > deadline (contracts/Campaign.sol#140)
+Campaign._validateDonation(address,uint256) (contracts/Campaign.sol#176-181) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp > deadline (contracts/Campaign.sol#178)
+Campaign.submitReport(uint256,bytes32,string) (contracts/Campaign.sol#253-259) uses timestamp for comparisons
+	Dangerous comparisons:
+	- withdrawalId >= _withdrawals.length || _withdrawals[withdrawalId].status != WStatus.Executed (contracts/Campaign.sol#255)
+Campaign._pendingVote(uint256) (contracts/Campaign.sol#276-281) uses timestamp for comparisons
+	Dangerous comparisons:
+	- id >= _withdrawals.length (contracts/Campaign.sol#277)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+INFO:Detectors:
+Detector: missing-inheritance
+DonationReceipt (contracts/DonationReceipt.sol#11-109) should inherit from IDonationReceipt (contracts/Campaign.sol#9)
+DonationToken (contracts/DonationToken.sol#12-75) should inherit from IDonationToken (contracts/Campaign.sol#8)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#missing-inheritance
+INFO:Detectors:
+Detector: timestamp
+Campaign.initialize(address,address,uint40,string,uint128[],address[],uint8) (contracts/Campaign.sol#104-128) uses timestamp for comparisons
+	Dangerous comparisons:
+	- deadline_ <= block.timestamp (contracts/Campaign.sol#109)
+Campaign.activate() (contracts/Campaign.sol#139-143) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp > deadline (contracts/Campaign.sol#140)
+Campaign._validateDonation(address,uint256) (contracts/Campaign.sol#176-181) uses timestamp for comparisons
+	Dangerous comparisons:
+	- block.timestamp > deadline (contracts/Campaign.sol#178)
+Campaign.submitReport(uint256,bytes32,string) (contracts/Campaign.sol#253-259) uses timestamp for comparisons
+	Dangerous comparisons:
+	- withdrawalId >= _withdrawals.length || _withdrawals[withdrawalId].status != WStatus.Executed (contracts/Campaign.sol#255)
+Campaign._pendingVote(uint256) (contracts/Campaign.sol#276-281) uses timestamp for comparisons
+	Dangerous comparisons:
+	- id >= _withdrawals.length (contracts/Campaign.sol#277)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+INFO:Slither:contracts/ analyzed (71 contracts with 102 detectors), 13 result(s) found
